@@ -1,0 +1,92 @@
+# Define schema for match.csv data
+match_csv_schema = StructType([
+    StructField("match_sk", IntegerType(), True),
+    StructField("match_id", IntegerType(), True),
+    StructField("team1", StringType(), True),
+    StructField("team2", StringType(), True),
+    StructField("match_date", DateType(), True),
+    StructField("season_year", IntegerType(), True),
+    StructField("venue_name", StringType(), True),
+    StructField("city_name", StringType(), True),
+    StructField("country_name", StringType(), True),
+    StructField("toss_winner", StringType(), True),
+    StructField("match_winner", StringType(), True),
+    StructField("toss_name", StringType(), True),
+    StructField("win_type", StringType(), True),
+    StructField("outcome_type", StringType(), True),
+    StructField("manofmach", StringType(), True),
+    StructField("win_margin", IntegerType(), True),
+    StructField("country_id", IntegerType(), True)
+])
+
+match_df = spark.read.schema(match_csv_schema).csv('s3a://ipldataset0/Match.csv', header='true')
+====================================================================
+How many matches were played in each season?
+matches_per_season_df = spark.sql("""select count(match_id) match_count, season season_year
+           from ball_df
+          group by 2
+          """)
+matches_per_season_df = matches_per_season_df.toPandas()
+seasons = matches_per_season_df['season_year']
+match_counts = matches_per_season_df['match_count']
+
+plt.figure(figsize=(10, 6))
+plt.bar(seasons, match_counts, color='skyblue')
+plt.xlabel('Season')
+plt.ylabel('Number of Matches Played')
+plt.title('Number of Matches Played in Each Season')
+plt.xticks(rotation=45)
+plt.grid(axis='y', linestyle='--', alpha=0.7)
+
+plt.tight_layout()
+plt.show()
+
+====================================================================
+What is the distribution of left-handed and right-handed batsmen among players?
+player_df = spark.read.csv('s3a://ipldataset0/Player.csv', header='true', inferSchema='true')
+player_df.createOrReplaceTempView("player_df")
+result_df = spark.sql("select count(1) no_of_batsmen, batting_hand from player_df group by 2")
+result_pandas_df = result_df.toPandas()
+# Plotting
+plt.figure(figsize=(8, 8))
+plt.pie(result_pandas_df['no_of_batsmen'], labels=result_pandas_df['batting_hand'], autopct='%1.1f%%', startangle=90, colors=['skyblue', 'salmon'])
+plt.title('Distribution of Batsmen by Batting Hand')
+plt.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle
+
+plt.show()
+
+====================================================================
+How does the number of boundaries (4s and 6s) scored by each team vary with the number of matches won by each team?
+query_result_df = spark.sql("""select team_batting
+, count(case when runs_scored = 4 then 1 end) run_scored_4,
+           count(case when runs_scored = 6 then 1 end) run_scored_6,
+           count(case when match_winner=team_batting then 1 end) no_of_matches_won
+           from ball_df b
+           join match_df m on m.match_id=b.match_id
+          group by 1
+          order by run_scored_4 desc, run_scored_6 desc
+          """)
+query_result_df = query_result_df.toPandas()
+plt.figure(figsize=(10, 6))
+
+teams = query_result_df['team_batting']
+fours = query_result_df['run_scored_4']
+sixes = query_result_df['run_scored_6']
+matches_won = query_result_df['no_of_matches_won']
+
+bar_width = 0.2
+index = range(len(teams))
+
+plt.bar(index, fours, bar_width, label='4s', color='skyblue')
+plt.bar([i + bar_width for i in index], sixes, bar_width, label='6s', color='salmon')
+plt.bar([i + 2 * bar_width for i in index], matches_won, bar_width, label='Matches Won', color='lightgreen')
+
+plt.xlabel('Teams')
+plt.ylabel('Count')
+plt.title('Number of 4s, 6s, and Matches Won by Each Team')
+plt.xticks([i + bar_width for i in index], teams, rotation=45)
+plt.legend()
+
+plt.tight_layout()
+plt.show()
+
